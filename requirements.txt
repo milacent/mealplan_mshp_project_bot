@@ -1,0 +1,8 @@
+asyncpg
+aiogram
+APScheduler
+python-decouple
+python-dotenv
+psycopg2-binary
+aiohttp
+g4f
