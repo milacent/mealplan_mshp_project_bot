@@ -156,8 +156,9 @@ async def process_delete_confirmation(message: types.Message, state: FSMContext)
 @router.message(StateFilter(RegistrationStates.waiting_for_name))
 async def process_name(message: types.Message, state: FSMContext):
     name = message.text.strip()
-    if not re.match(r'^[А-Яа-яЁё\s]+', name):
-        await message.reply("Пожалуйста, введите корректное имя (только русские буквы и пробелы).")
+    parts = name.split()
+    if not parts or any(not part.isalpha() for part in parts):
+        await message.reply("Пожалуйста, введите корректное имя (только буквы и пробелы).")
         return
     await state.update_data(name=name)
     await message.reply("Сколько тебе лет?")

@@ -2,6 +2,37 @@ import aiohttp
 from config import SPOONACULAR_API_KEY
 
 
+def calculate_target_calories(weight, height, age, gender, goal, timeframe, activity_level=1.55):
+    if gender == "мужской":
+        bmr = 10 * weight + 6.25 * height - 5 * age + 5
+    else:
+        bmr = 10 * weight + 6.25 * height - 5 * age - 161
+
+    maintenance_calories = bmr * activity_level
+
+    if goal == "похудение":
+        if "3 месяца" in timeframe:
+            target = maintenance_calories * 0.8
+        elif "полгода" in timeframe:
+            target = maintenance_calories * 0.85
+        elif "год" in timeframe:
+            target = maintenance_calories * 0.9
+        else:
+            target = maintenance_calories * 0.85
+    elif goal == "набор массы":
+        if "3 месяца" in timeframe:
+            target = maintenance_calories + 350
+        elif "полгода" in timeframe:
+            target = maintenance_calories + 300
+        elif "год" in timeframe:
+            target = maintenance_calories + 250
+        else:
+            target = maintenance_calories + 300
+    else:
+        target = maintenance_calories
+
+    return int(target)
+
 async def get_meal_nutrition(meal_id: int) -> dict:
     """Получает КБЖУ для конкретного блюда по его ID."""
     url = f"https://api.spoonacular.com/recipes/{meal_id}/information"
@@ -55,33 +86,7 @@ async def build_menu_text(user_data: dict) -> str:
     gender = user_data["gender"].lower()
     allergies = user_data["allergies"] if user_data["allergies"] != "Нет" else ""
 
-    # Рассчитываем базовый метаболизм (Mifflin-St Jeor)
-    if gender == "мужской":
-        bmr = 10 * weight + 6.25 * height - 5 * age + 5
-    else:
-        bmr = 10 * weight + 6.25 * height - 5 * age - 161
-
-    # Учитываем цель и период
-    if goal == "похудение":
-        if "3 месяца" in timeframe:
-            target_calories = int(bmr * 0.7)
-        elif "полгода" in timeframe:
-            target_calories = int(bmr * 0.8)
-        elif "год" in timeframe:
-            target_calories = int(bmr * 0.85)
-        else:
-            target_calories = int(bmr * 0.8)
-    elif goal == "набор массы":
-        if "3 месяца" in timeframe:
-            target_calories = int(bmr * 1.25)
-        elif "полгода" in timeframe:
-            target_calories = int(bmr * 1.15)
-        elif "год" in timeframe:
-            target_calories = int(bmr * 1.1)
-        else:
-            target_calories = int(bmr * 1.15)
-    else:
-        target_calories = int(bmr)
+    target_calories = calculate_target_calories(weight, height, age, gender, goal, timeframe)
 
     url = "https://api.spoonacular.com/mealplanner/generate"
     params = {
@@ -97,13 +102,22 @@ async def build_menu_text(user_data: dict) -> str:
             if response.status == 200:
                 data = await response.json()
                 meals = data.get("meals", [])
-                nutrients = data.get("nutrients", {})
 
                 menu = f"🍽 <b>План питания на день для {goal} (~{target_calories} ккал)</b>\n"
                 menu += f"Период: {timeframe}\n\n"
 
+                total_calories = 0
+                total_protein = 0
+                total_fat = 0
+                total_carbs = 0
+
                 for i, meal in enumerate(meals, 1):
                     nutrition = await get_meal_nutrition(meal["id"])
+                    total_calories += nutrition["calories"]
+                    total_protein += nutrition["protein"]
+                    total_fat += nutrition["fat"]
+                    total_carbs += nutrition["carbohydrates"]
+
                     menu += f"  <b>Прием {i}: {meal['title']}</b>\n"
                     menu += f"  Время приготовления: {meal['readyInMinutes']} мин\n"
                     menu += f"  Ссылка на рецепт: {meal['sourceUrl']}\n"
@@ -111,10 +125,10 @@ async def build_menu_text(user_data: dict) -> str:
                     menu += f"Б: {nutrition['protein']} г, Ж: {nutrition['fat']} г, У: {nutrition['carbohydrates']} г\n\n"
 
                 menu += f"<b>Итого за день</b>:\n"
-                menu += f"Калории: {nutrients.get('calories', 0)} ккал\n"
-                menu += f"Белки: {nutrients.get('protein', 0)} г\n"
-                menu += f"Жиры: {nutrients.get('fat', 0)} г\n"
-                menu += f"Углеводы: {nutrients.get('carbohydrates', 0)} г"
+                menu += f"Калории: {round(total_calories, 2)} ккал\n"
+                menu += f"Белки: {round(total_protein, 2)} г\n"
+                menu += f"Жиры: {round(total_fat, 2)} г\n"
+                menu += f"Углеводы: {round(total_carbs, 2)} г"
 
                 return menu
             else:
